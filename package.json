@@ -1,0 +1,35 @@
+{
+  "name": "octssh",
+  "version": "0.0.0",
+  "private": true,
+  "description": "OctSSH MCP server (work in progress)",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "octssh": "dist/index.js"
+  },
+  "main": "dist/index.js",
+  "files": [
+    "dist/**",
+    "README.md"
+  ],
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.25.3",
+    "fast-glob": "^3.3.2",
+    "ssh2": "^1.16.0",
+    "zod": "^3.24.1"
+  },
+  "scripts": {
+    "clean": "node scripts/clean-dist.cjs",
+    "build": "npm run clean --silent && tsup",
+    "test": "npm run build --silent && node --test test/index.test.js",
+    "dev": "node dist/index.js"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.30",
+    "tsup": "^8.0.0",
+    "typescript": "^5.5.0"
+  }
+}
