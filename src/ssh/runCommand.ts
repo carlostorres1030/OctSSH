@@ -3,6 +3,7 @@ import type { Client } from "ssh2";
 export type ExecOptions = {
   maxStdoutBytes?: number;
   maxStderrBytes?: number;
+  pty?: boolean;
 };
 
 export type ExecResult = {
@@ -25,7 +26,10 @@ export async function runCommand(
   const maxStderrBytes = options.maxStderrBytes ?? 64 * 1024;
 
   return new Promise((resolve, reject) => {
-    client.exec(command, (err, stream) => {
+    client.exec(
+      command,
+      options.pty ? ({ pty: true } as any) : undefined,
+      (err, stream) => {
       if (err) return reject(err);
 
       const stdoutChunks: Buffer[] = [];
@@ -64,6 +68,7 @@ export async function runCommand(
           truncated: { stdout: stdoutTrunc, stderr: stderrTrunc },
         });
       });
-    });
+      }
+    );
   });
 }
