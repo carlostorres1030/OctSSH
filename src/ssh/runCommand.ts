@@ -26,10 +26,7 @@ export async function runCommand(
   const maxStderrBytes = options.maxStderrBytes ?? 64 * 1024;
 
   return new Promise((resolve, reject) => {
-    client.exec(
-      command,
-      options.pty ? ({ pty: true } as any) : undefined,
-      (err, stream) => {
+    const handler = (err: any, stream: any) => {
       if (err) return reject(err);
 
       const stdoutChunks: Buffer[] = [];
@@ -68,7 +65,14 @@ export async function runCommand(
           truncated: { stdout: stdoutTrunc, stderr: stderrTrunc },
         });
       });
-      }
-    );
+    };
+
+    // IMPORTANT: do not call `client.exec(cmd, undefined, cb)`.
+    // ssh2 treats that as opts=undefined and will crash on opts.allowHalfOpen.
+    if (options.pty) {
+      client.exec(command, { pty: true } as any, handler);
+    } else {
+      client.exec(command, handler);
+    }
   });
 }

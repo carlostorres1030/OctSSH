@@ -56,22 +56,26 @@ export function connectSsh2(params: SshClientParams): Promise<Client> {
       resolve(client);
     });
 
-    client.on("error", (err) => {
+    client.on("error", (err: Error) => {
       if (settled) return;
       settled = true;
       cleanup();
       reject(err);
     });
 
-    client.connect({
+    // IMPORTANT: only set `sock` if it is actually provided.
+    // Passing `sock: undefined` breaks some ssh2 versions (they check key presence).
+    const connectOptions: any = {
       host: params.host ?? "127.0.0.1",
       port: params.port ?? 22,
       username: params.username,
-      sock: params.sock,
-      privateKey: params.privateKey,
-      agent: params.agent,
       readyTimeout: params.readyTimeoutMs ?? 20_000,
-    } as any);
+    };
+    if (params.sock) connectOptions.sock = params.sock;
+    if (params.privateKey) connectOptions.privateKey = params.privateKey;
+    if (params.agent) connectOptions.agent = params.agent;
+
+    client.connect(connectOptions);
   });
 }
 

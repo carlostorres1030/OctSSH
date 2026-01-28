@@ -25,35 +25,28 @@ function nowIso() {
   return new Date().toISOString();
 }
 
-function buildScreenWrapper(params: { sessionId: string; command: string; sudo: boolean }) {
+function buildWrapperFile(params: { sessionId: string; sudo: boolean }) {
+  // Write a real script file to avoid multi-level quote escaping.
+  // The wrapper expects the user command in $1.
   const runDir = `$HOME/.octssh/runs/${params.sessionId}`;
-  const stdout = `${runDir}/stdout.log`;
-  const stderr = `${runDir}/stderr.log`;
-  const meta = `${runDir}/meta.json`;
-  const pidFile = `${runDir}/cmd.pid`;
+  const inner = params.sudo ? 'sudo -n -- sh -lc "$1"' : 'sh -lc "$1"';
 
-  const inner = params.sudo
-    ? `sudo -n -- sh -lc ${quoteForSh(params.command)}`
-    : `sh -lc ${quoteForSh(params.command)}`;
-
-  // This wrapper runs inside the screen session.
-  // It writes cmd pid + status meta for polling.
   return [
-    `run=${quoteForSh(runDir)}`,
-    `mkdir -p "$run"`,
-    `stdout=${quoteForSh(stdout)}`,
-    `stderr=${quoteForSh(stderr)}`,
-    `meta=${quoteForSh(meta)}`,
-    `pidfile=${quoteForSh(pidFile)}`,
-    `ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)`,
-    `printf '{"status":"running","startedAt":"%s"}\n' "$ts" > "$meta"`,
-    // Run the command in background so we can record its pid.
+    '#!/bin/sh',
+    'set -u',
+    `run="${runDir}"`,
+    'stdout="$run/stdout.log"',
+    'stderr="$run/stderr.log"',
+    'meta="$run/meta.json"',
+    'pidfile="$run/cmd.pid"',
+    'ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+    'printf "{\\"status\\":\\"running\\",\\"startedAt\\":\\"%s\\"}\\n" "$ts" > "$meta"',
     `(${inner}) >"$stdout" 2>"$stderr" & cmdpid=$!`,
-    `echo "$cmdpid" > "$pidfile"`,
-    `wait "$cmdpid"; code=$?`,
-    `ts2=$(date -u +%Y-%m-%dT%H:%M:%SZ)`,
-    `printf '{"status":"done","exitCode":%s,"endedAt":"%s"}\n' "$code" "$ts2" > "$meta"`,
-  ].join("; ");
+    'echo "$cmdpid" > "$pidfile"',
+    'wait "$cmdpid"; code=$?',
+    'ts2=$(date -u +%Y-%m-%dT%H:%M:%SZ)',
+    'printf "{\\"status\\":\\"done\\",\\"exitCode\\":%s,\\"endedAt\\":\\"%s\\"}\\n" "$code" "$ts2" > "$meta"',
+  ].join('\n');
 }
 
 export async function startAsyncInScreen(
@@ -76,33 +69,83 @@ export async function startAsyncInScreen(
     throw new Error("Remote prerequisite missing: `screen` is required on the server.");
   }
 
-  const wrapper = buildScreenWrapper({ sessionId, command: params.command, sudo: params.sudo });
+  const wrapperFile = buildWrapperFile({ sessionId, sudo: params.sudo });
 
   // Start a detached screen session.
   // After starting, try to read cmd.pid (best-effort).
   const launcher = [
     `run=\"$HOME/.octssh/runs/${sessionId}\"`,
     `mkdir -p \"$run\"`,
-    // Create placeholder files so polling doesn't see an empty dir.
-    `: > \"$run/stdout.log\"; : > \"$run/stderr.log\"`,
-    `printf '{"status":"running","startedAt":"%s"}\n' \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\" > \"$run/meta.json\"`,
-    // Launch screen; then verify it exists.
-    `screen -dmS ${quoteForSh(screenName)} sh -lc ${quoteForSh(wrapper)}`,
-    `screen -ls | grep -F ${quoteForSh(screenName)} >/dev/null 2>&1 || { echo 'screen failed to start' 1>&2; exit 1; }`,
-    // Best-effort: wait for cmd.pid a few seconds.
-    `i=0; while [ $i -lt 5 ]; do if [ -f \"$run/cmd.pid\" ]; then cat \"$run/cmd.pid\"; exit 0; fi; i=$((i+1)); sleep 1; done; exit 0`,
-  ].join("; ");
+    `: > \"$run/stdout.log\"`,
+    `: > \"$run/stderr.log\"`,
+    `cat > \"$run/wrapper.sh\" <<'OCTSSH_EOF'`,
+    wrapperFile,
+    'OCTSSH_EOF',
+    `chmod +x \"$run/wrapper.sh\"`,
+    // Run wrapper in detached screen and pass the user command as $1.
+    `screen -dmS ${quoteForSh(screenName)} sh \"$run/wrapper.sh\" ${quoteForSh(params.command)}`,
+    `screen -ls | grep -F ${quoteForSh(screenName)} >/dev/null 2>&1 || { echo 'screen session not found' 1>&2; screen -ls 1>&2 || true; exit 1; }`,
+    `i=0; while [ $i -lt 5 ]; do if [ -f \"$run/cmd.pid\" ]; then cat \"$run/cmd.pid\"; exit 0; fi; i=$((i+1)); sleep 1; done; echo 'cmd.pid not created' 1>&2; ls -la \"$run\" 1>&2 || true; exit 1`,
+  ].join("\n");
 
-  const started = await runCommand(client, wrapSh(launcher), {
-    maxStdoutBytes: 1024,
-    maxStderrBytes: 1024,
-    // screen may require a TTY depending on remote config.
-    pty: true,
-  });
+  const runLauncher = async (pty: boolean) =>
+    runCommand(client, wrapSh(launcher), {
+      maxStdoutBytes: 1024,
+      maxStderrBytes: 1024,
+      pty,
+    });
+
+  // Prefer no-pty to preserve stderr separation. Retry with pty if needed.
+  let started = await runLauncher(false);
+  if (started.exitCode !== 0) {
+    const combined = `${started.stdout}\n${started.stderr}`.toLowerCase();
+    if (
+      combined.includes('cannot open your terminal') ||
+      combined.includes('no tty') ||
+      combined.includes('not a terminal')
+    ) {
+      started = await runLauncher(true);
+    }
+  }
 
   if (started.exitCode !== 0) {
+    const msg = [
+      started.stderr.trim() ? `stderr: ${started.stderr.trim()}` : null,
+      started.stdout.trim() ? `stdout: ${started.stdout.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join(' | ');
+
+    // Best-effort diagnostics to help debug remote environments.
+    const diagCmd = [
+      `run=\"$HOME/.octssh/runs/${sessionId}\"`,
+      `echo '---run-dir---'`,
+      `ls -la \"$run\" || true`,
+      `echo '---meta---'`,
+      `cat \"$run/meta.json\" 2>/dev/null || true`,
+      `echo '---stdout---'`,
+      `cat \"$run/stdout.log\" 2>/dev/null || true`,
+      `echo '---stderr---'`,
+      `cat \"$run/stderr.log\" 2>/dev/null || true`,
+      `echo '---screen-match---'`,
+      `screen -ls | grep -F ${quoteForSh(screenName)} || true`,
+      `echo '---screen-ls---'`,
+      `screen -ls | head -n 50 || true`,
+    ].join('; ');
+
+    let diagOut = '';
+    try {
+      const diag = await runCommand(client, wrapSh(diagCmd), {
+        maxStdoutBytes: 32 * 1024,
+        maxStderrBytes: 8 * 1024,
+      });
+      diagOut = diag.stdout || diag.stderr ? `\n${diag.stdout}${diag.stderr}` : '';
+    } catch {
+      // ignore
+    }
+
     throw new Error(
-      `Failed to start remote screen session (${started.stderr.trim() || "unknown error"})`
+      `Failed to start remote screen session (session_id=${sessionId}, screen=${screenName}, ${msg || 'unknown error'})${diagOut}`
     );
   }
 
