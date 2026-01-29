@@ -10,7 +10,30 @@ export const configSchema = z
     promptThresholdHosts: z.number().int().min(1).max(10_000).default(20),
     idleTtlSeconds: z.number().int().min(1).max(3600).default(300),
     maxConnections: z.number().int().min(1).max(500).default(10),
-    allowSshG: z.boolean().default(false)
+    allowSshG: z.boolean().default(false),
+
+    // Safety policy for command execution.
+    // This is intentionally conservative: it blocks a small set of known
+    // high-risk firewall/lockout commands outright and requires confirmation
+    // for destructive file removals.
+    security: z
+      .object({
+        // If `exec`/`exec-async` command matches any deny rule, it is refused.
+        // Items are treated as case-insensitive regex strings.
+        denyRegex: z.array(z.string()).default([]),
+
+        // If command matches any of these executables (word boundary), it is refused.
+        // Examples: ["iptables", "ufw"]
+        denyExecutables: z.array(z.string()).default([]),
+
+        // Additional patterns requiring virtual confirmation (destructive).
+        // Defaults include rm -rf like operations.
+        requireConfirmRegex: z.array(z.string()).default([])
+      })
+      .strict()
+      // Allow omitting `security` entirely in config.json.
+      // Missing keys will still get per-field defaults.
+      .default({} as any)
   })
   .strict();
 
