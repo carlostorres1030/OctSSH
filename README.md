@@ -95,6 +95,31 @@ All tools are stateless: every call includes `machine` (host alias) or `session_
 - `sleep(time)`
   - Sleeps for `time` milliseconds (useful for agent workflows)
 
+### File Transfer Tools
+
+Uploads are **safe by default** via a virtual confirmation step when they would overwrite remote files.
+
+- `upload(machine, localPath, remotePath, confirm_code?)`
+  - Uploads a single file or a directory.
+  - If the upload would overwrite existing remote files:
+    - the tool REFUSES to run
+    - returns `confirm_code` and a conflict list (first 10 + total)
+    - re-run the SAME `upload(...)` call with `confirm_code` to allow overwrite
+
+- `upload-async(machine, localPath, remotePath, confirm_code?)`
+  - Same behavior as `upload`, but runs in background.
+  - Only creates a session once the upload actually starts.
+  - Use `get-result(session_id, lines?)` to poll progress/logs.
+
+Downloads are **never allowed** to overwrite local files.
+
+- `download(machine, remotePath, localPath)`
+  - Downloads a single file or a directory.
+  - If any local file would be overwritten, the tool refuses and tells you to choose a new localPath.
+
+- `download-async(machine, remotePath, localPath)`
+  - Same as download, but runs in background with a session id.
+
 ## Configuration
 
 Environment variables:
@@ -108,6 +133,27 @@ Config file: `~/.octssh/config.json`
 - `idleTtlSeconds` (default 300)
 - `maxConnections` (default 10)
 - `allowSshG` (default false)
+
+### Security Policy
+
+`exec` and `exec-async` have safety controls:
+- `exec` refuses any command that contains `sudo` (use `sudo-exec` instead).
+- Some high-risk firewall/lockout commands are blocked outright.
+- Destructive removes like `rm -r` / `rm -rf` default to VIRTUAL MODE:
+  - the tool returns a preview of affected paths + `confirm_code`
+  - to proceed, re-run the SAME command with `confirm_code`
+
+You can add your own deny rules via config:
+
+```json
+{
+  "security": {
+    "denyExecutables": ["some-tool"],
+    "denyRegex": ["\\\bvery\\\s+bad\\\b"],
+    "requireConfirmRegex": ["\\\brm\\\b\\\s+-\\\S*[rR]\\\S*"]
+  }
+}
+```
 
 `allowSshG=true` enables optional `ssh -G` based resolution. Note that OpenSSH may execute dynamic ssh_config directives (e.g. `Match exec`).
 
