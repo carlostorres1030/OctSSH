@@ -3,7 +3,7 @@ import { z } from "zod";
 import { atomicWriteFileSync, readJsonIfExistsSync } from "./fs.js";
 import { getOctsshDir } from "./paths.js";
 
-export const sessionRecordSchema = z
+const remoteScreenSessionSchema = z
   .object({
     session_id: z.string().min(1),
     machine: z.string().min(1),
@@ -27,6 +27,30 @@ export const sessionRecordSchema = z
     exitCode: z.number().int().optional()
   })
   .strict();
+
+const transferSessionSchema = z
+  .object({
+    kind: z.literal("transfer"),
+    session_id: z.string().min(1),
+    machine: z.string().min(1),
+    createdAt: z.string().min(1),
+    updatedAt: z.string().min(1),
+    status: z.enum(["running", "done", "failed", "cancelled"]),
+
+    direction: z.enum(["upload", "download"]),
+    localPath: z.string().min(1),
+    remotePath: z.string().min(1),
+
+    bytesTotal: z.number().int().nonnegative().optional(),
+    bytesDone: z.number().int().nonnegative().optional(),
+
+    // Local log file for get-result(lines).
+    localLogPath: z.string().min(1).optional(),
+    error: z.string().optional()
+  })
+  .strict();
+
+export const sessionRecordSchema = z.union([remoteScreenSessionSchema, transferSessionSchema]);
 
 export type SessionRecord = z.infer<typeof sessionRecordSchema>;
 
