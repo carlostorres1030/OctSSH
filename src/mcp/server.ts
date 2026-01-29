@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import fs from "node:fs";
 import { z } from "zod";
 import { ConnectionPool } from "../ssh/connectionPool.js";
 import { connectDirect, connectWithProxyJump } from "../ssh/connect.js";
@@ -14,6 +15,11 @@ import { quoteForSh } from "../ssh/shell.js";
 import { findExpiredSessions, deleteSessionFile } from "../state/cleanup.js";
 import { loadInventory, saveInventory } from "../state/inventory.js";
 import { collectExtendedInfo } from "../init/extended.js";
+import { guardExecCommand } from "../security/policy.js";
+import { createPending, deletePending, loadPending } from "../state/pending.js";
+import { planUpload, findUploadConflicts, performUpload } from "../transfer/upload.js";
+import { planDownload, findDownloadConflicts, performDownload } from "../transfer/download.js";
+import { startUploadAsync, startDownloadAsync, cancelTransfer } from "../transfer/manager.js";
 
 type ToolResult = {
   ok: boolean;
@@ -40,6 +46,17 @@ function notImplemented(tool: string) {
 
 function isoNow() {
   return new Date().toISOString();
+}
+
+function tailLocalFile(filePath: string, lines: number) {
+  try {
+    const raw = fs.readFileSync(filePath, "utf8");
+    const parts = raw.split(/\r?\n/);
+    const tail = parts.slice(Math.max(0, parts.length - lines)).filter(Boolean);
+    return tail.join("\n");
+  } catch {
+    return "";
+  }
 }
 
 function toHomeAbs(remotePath: string) {
@@ -91,6 +108,20 @@ export function createOctsshServer() {
         retentionDays: currentCfg.retentionDays,
       });
       for (const rec of expired) {
+        // Local-only transfer sessions.
+        if ((rec as any).kind === "transfer") {
+          const logPath = (rec as any).localLogPath as string | undefined;
+          if (logPath) {
+            try {
+              fs.rmSync(logPath, { force: true });
+            } catch {
+              // ignore
+            }
+          }
+          deleteSessionFile(rec.session_id, getOctsshDir());
+          continue;
+        }
+
         // Best-effort remote cleanup.
         try {
           const lease = await pool.get(rec.machine);
@@ -214,11 +245,39 @@ export function createOctsshServer() {
       inputSchema: z.object({
         machine: z.string().min(1),
         command: z.string().min(1),
+        confirm_code: z.string().optional(),
       }),
     },
-    async ({ machine, command }) => {
+    async ({ machine, command, confirm_code }) => {
       const lease = await pool.get(machine);
       try {
+        const decision = await guardExecCommand({
+          client: lease.value.ssh.client,
+          machine,
+          command,
+          allowSudo: false,
+          confirm_code,
+          security: cfg.security,
+        });
+        if (decision.action === "block") {
+          return respond({ ok: false, tool: "exec", error: decision.message });
+        }
+        if (decision.action === "confirm") {
+          return respond({
+            ok: false,
+            tool: "exec",
+            error: decision.message,
+            data: {
+              confirm_code: decision.confirm_code,
+              preview: {
+                total: decision.preview.total,
+                truncated: decision.preview.truncated,
+                sample: decision.preview.sample.slice(0, 10),
+              },
+            },
+          });
+        }
+
         const res = await runCommand(lease.value.ssh.client, wrapSh(command));
         return respond({
           ok: res.exitCode === 0,
@@ -247,11 +306,39 @@ export function createOctsshServer() {
       inputSchema: z.object({
         machine: z.string().min(1),
         command: z.string().min(1),
+        confirm_code: z.string().optional(),
       }),
     },
-    async ({ machine, command }) => {
+    async ({ machine, command, confirm_code }) => {
       const lease = await pool.get(machine);
       try {
+        const decision = await guardExecCommand({
+          client: lease.value.ssh.client,
+          machine,
+          command,
+          allowSudo: true,
+          confirm_code,
+          security: cfg.security,
+        });
+        if (decision.action === "block") {
+          return respond({ ok: false, tool: "sudo-exec", error: decision.message });
+        }
+        if (decision.action === "confirm") {
+          return respond({
+            ok: false,
+            tool: "sudo-exec",
+            error: decision.message,
+            data: {
+              confirm_code: decision.confirm_code,
+              preview: {
+                total: decision.preview.total,
+                truncated: decision.preview.truncated,
+                sample: decision.preview.sample.slice(0, 10),
+              },
+            },
+          });
+        }
+
         const res = await runCommand(lease.value.ssh.client, wrapSudoSh(command));
         const sudoHint =
           res.exitCode !== 0 && isSudoPasswordError(res.stderr)
@@ -286,11 +373,39 @@ export function createOctsshServer() {
       inputSchema: z.object({
         machine: z.string().min(1),
         command: z.string().min(1),
+        confirm_code: z.string().optional(),
       }),
     },
-    async ({ machine, command }) => {
+    async ({ machine, command, confirm_code }) => {
       const lease = await pool.get(machine);
       try {
+        const decision = await guardExecCommand({
+          client: lease.value.ssh.client,
+          machine,
+          command,
+          allowSudo: false,
+          confirm_code,
+          security: cfg.security,
+        });
+        if (decision.action === "block") {
+          return respond({ ok: false, tool: "exec-async", error: decision.message });
+        }
+        if (decision.action === "confirm") {
+          return respond({
+            ok: false,
+            tool: "exec-async",
+            error: decision.message,
+            data: {
+              confirm_code: decision.confirm_code,
+              preview: {
+                total: decision.preview.total,
+                truncated: decision.preview.truncated,
+                sample: decision.preview.sample.slice(0, 10),
+              },
+            },
+          });
+        }
+
         const started = await startAsyncInScreen(lease.value.ssh.client, {
           machine,
           command,
@@ -312,17 +427,287 @@ export function createOctsshServer() {
       inputSchema: z.object({
         machine: z.string().min(1),
         command: z.string().min(1),
+        confirm_code: z.string().optional(),
       }),
     },
-    async ({ machine, command }) => {
+    async ({ machine, command, confirm_code }) => {
       const lease = await pool.get(machine);
       try {
+        const decision = await guardExecCommand({
+          client: lease.value.ssh.client,
+          machine,
+          command,
+          allowSudo: true,
+          confirm_code,
+          security: cfg.security,
+        });
+        if (decision.action === "block") {
+          return respond({ ok: false, tool: "exec-async-sudo", error: decision.message });
+        }
+        if (decision.action === "confirm") {
+          return respond({
+            ok: false,
+            tool: "exec-async-sudo",
+            error: decision.message,
+            data: {
+              confirm_code: decision.confirm_code,
+              preview: {
+                total: decision.preview.total,
+                truncated: decision.preview.truncated,
+                sample: decision.preview.sample.slice(0, 10),
+              },
+            },
+          });
+        }
+
         const started = await startAsyncInScreen(lease.value.ssh.client, {
           machine,
           command,
           sudo: true,
         });
         return respond({ ok: true, tool: "exec-async-sudo", data: started });
+      } finally {
+        lease.release();
+      }
+    }
+  );
+
+  server.registerTool(
+    "upload",
+    {
+      title: "Upload Files/Directory",
+      description:
+        "Upload a file or directory to the remote machine. Refuses to overwrite unless confirm_code is provided after a conflict preview.",
+      inputSchema: z.object({
+        machine: z.string().min(1),
+        localPath: z.string().min(1),
+        remotePath: z.string().min(1),
+        confirm_code: z.string().optional(),
+      }),
+    },
+    async ({ machine, localPath, remotePath, confirm_code }) => {
+      const lease = await pool.get(machine);
+      try {
+        const plan = await planUpload(lease.value.ssh.client, localPath, remotePath);
+        const conflicts = await findUploadConflicts(lease.value.ssh.client, plan);
+
+        if (conflicts.length > 0) {
+          if (!confirm_code) {
+            const code = createPending(
+              {
+                kind: "upload",
+                createdAt: isoNow(),
+                machine,
+                localPath,
+                remotePath,
+                conflicts,
+              },
+              getOctsshDir()
+            );
+            return respond({
+              ok: false,
+              tool: "upload",
+              error:
+                "VIRTUAL MODE: upload would overwrite existing remote files. Re-run upload with confirm_code to proceed.",
+              data: {
+                confirm_code: code,
+                conflicts: conflicts.slice(0, 10),
+                totalConflicts: conflicts.length,
+              },
+            });
+          }
+
+          const pending = loadPending(confirm_code, getOctsshDir());
+          if (!pending || pending.kind !== "upload") {
+            return respond({
+              ok: false,
+              tool: "upload",
+              error:
+                "Invalid confirm_code. Re-run upload without confirm_code to get a new conflict preview.",
+            });
+          }
+          if (
+            pending.machine !== machine ||
+            pending.localPath !== localPath ||
+            pending.remotePath !== remotePath
+          ) {
+            return respond({
+              ok: false,
+              tool: "upload",
+              error:
+                "confirm_code does not match this upload request. Re-run upload without confirm_code to preview again.",
+            });
+          }
+          deletePending(confirm_code, getOctsshDir());
+        }
+
+        const result = await performUpload(lease.value.ssh.client, plan);
+        return respond({ ok: true, tool: "upload", data: { machine, ...result } });
+      } catch (err: any) {
+        return respond({ ok: false, tool: "upload", error: String(err?.message ?? err) });
+      } finally {
+        lease.release();
+      }
+    }
+  );
+
+  server.registerTool(
+    "download",
+    {
+      title: "Download Files/Directory",
+      description:
+        "Download a file or directory from the remote machine. Never overwrites local files; on conflict, you must choose a new local directory.",
+      inputSchema: z.object({
+        machine: z.string().min(1),
+        remotePath: z.string().min(1),
+        localPath: z.string().min(1),
+      }),
+    },
+    async ({ machine, remotePath, localPath }) => {
+      const lease = await pool.get(machine);
+      try {
+        const plan = await planDownload(lease.value.ssh.client, remotePath, localPath);
+        const conflicts = findDownloadConflicts(plan);
+        if (conflicts.length > 0) {
+          return respond({
+            ok: false,
+            tool: "download",
+            error:
+              "Refusing to overwrite local files. Choose a new localPath (empty or non-existent directory).",
+            data: { conflicts: conflicts.slice(0, 10), totalConflicts: conflicts.length },
+          });
+        }
+
+        const result = await performDownload(lease.value.ssh.client, plan);
+        return respond({ ok: true, tool: "download", data: { machine, ...result } });
+      } catch (err: any) {
+        return respond({ ok: false, tool: "download", error: String(err?.message ?? err) });
+      } finally {
+        lease.release();
+      }
+    }
+  );
+
+  server.registerTool(
+    "upload-async",
+    {
+      title: "Upload Async",
+      description:
+        "Async upload. Only creates a session if the transfer actually starts. Uses the same overwrite confirmation logic as upload.",
+      inputSchema: z.object({
+        machine: z.string().min(1),
+        localPath: z.string().min(1),
+        remotePath: z.string().min(1),
+        confirm_code: z.string().optional(),
+      }),
+    },
+    async ({ machine, localPath, remotePath, confirm_code }) => {
+      const lease = await pool.get(machine);
+      try {
+        const plan = await planUpload(lease.value.ssh.client, localPath, remotePath);
+        const conflicts = await findUploadConflicts(lease.value.ssh.client, plan);
+        if (conflicts.length > 0) {
+          if (!confirm_code) {
+            const code = createPending(
+              {
+                kind: "upload",
+                createdAt: isoNow(),
+                machine,
+                localPath,
+                remotePath,
+                conflicts,
+              },
+              getOctsshDir()
+            );
+            return respond({
+              ok: false,
+              tool: "upload-async",
+              error:
+                "VIRTUAL MODE: upload would overwrite existing remote files. Re-run upload-async with confirm_code to proceed.",
+              data: {
+                confirm_code: code,
+                conflicts: conflicts.slice(0, 10),
+                totalConflicts: conflicts.length,
+              },
+            });
+          }
+          const pending = loadPending(confirm_code, getOctsshDir());
+          if (!pending || pending.kind !== "upload") {
+            return respond({
+              ok: false,
+              tool: "upload-async",
+              error:
+                "Invalid confirm_code. Re-run upload-async without confirm_code to get a new conflict preview.",
+            });
+          }
+          if (
+            pending.machine !== machine ||
+            pending.localPath !== localPath ||
+            pending.remotePath !== remotePath
+          ) {
+            return respond({
+              ok: false,
+              tool: "upload-async",
+              error:
+                "confirm_code does not match this upload request. Re-run upload-async without confirm_code to preview again.",
+            });
+          }
+          deletePending(confirm_code, getOctsshDir());
+        }
+
+        const started = startUploadAsync({
+          client: lease.value.ssh.client,
+          machine,
+          localPath,
+          remotePath,
+          plan,
+        });
+        return respond({ ok: true, tool: "upload-async", data: started });
+      } catch (err: any) {
+        return respond({ ok: false, tool: "upload-async", error: String(err?.message ?? err) });
+      } finally {
+        lease.release();
+      }
+    }
+  );
+
+  server.registerTool(
+    "download-async",
+    {
+      title: "Download Async",
+      description:
+        "Async download. Only creates a session if the transfer actually starts. Never overwrites local files.",
+      inputSchema: z.object({
+        machine: z.string().min(1),
+        remotePath: z.string().min(1),
+        localPath: z.string().min(1),
+      }),
+    },
+    async ({ machine, remotePath, localPath }) => {
+      const lease = await pool.get(machine);
+      try {
+        const plan = await planDownload(lease.value.ssh.client, remotePath, localPath);
+        const conflicts = findDownloadConflicts(plan);
+        if (conflicts.length > 0) {
+          return respond({
+            ok: false,
+            tool: "download-async",
+            error:
+              "Refusing to overwrite local files. Choose a new localPath (empty or non-existent directory).",
+            data: { conflicts: conflicts.slice(0, 10), totalConflicts: conflicts.length },
+          });
+        }
+
+        const started = startDownloadAsync({
+          client: lease.value.ssh.client,
+          machine,
+          remotePath,
+          localPath,
+          plan,
+        });
+        return respond({ ok: true, tool: "download-async", data: started });
+      } catch (err: any) {
+        return respond({ ok: false, tool: "download-async", error: String(err?.message ?? err) });
       } finally {
         lease.release();
       }
@@ -344,6 +729,36 @@ export function createOctsshServer() {
       const rec = loadSession(session_id, getOctsshDir());
       if (!rec) {
         return respond({ ok: false, tool: "get-result", error: "session not found" });
+      }
+
+      // Local transfer session.
+      if ((rec as any).kind === "transfer") {
+        const n = lines ? Math.max(1, Math.min(2000, Math.floor(lines))) : null;
+        const logPath = (rec as any).localLogPath as string | undefined;
+        const tails =
+          n && logPath
+            ? {
+                log: tailLocalFile(logPath, n),
+              }
+            : null;
+
+        return respond({
+          ok: true,
+          tool: "get-result",
+          data: {
+            session_id,
+            kind: "transfer",
+            machine: rec.machine,
+            status: rec.status,
+            direction: (rec as any).direction,
+            localPath: (rec as any).localPath,
+            remotePath: (rec as any).remotePath,
+            bytesDone: (rec as any).bytesDone ?? null,
+            bytesTotal: (rec as any).bytesTotal ?? null,
+            error: (rec as any).error ?? null,
+            tails,
+          },
+        });
       }
 
       const lease = await pool.get(rec.machine);
@@ -504,6 +919,30 @@ export function createOctsshServer() {
       const rec = loadSession(session_id, getOctsshDir());
       if (!rec) {
         return respond({ ok: false, tool: "cancel", error: "session not found" });
+      }
+
+      if ((rec as any).kind === "transfer") {
+        const ok = cancelTransfer(session_id);
+        // Even if we can't abort (process restart), mark as cancelled per policy.
+        saveSession(
+          {
+            ...(rec as any),
+            status: "cancelled",
+            updatedAt: isoNow(),
+            error: ok ? "cancelled" : "cancel requested (no runtime found)"
+          },
+          getOctsshDir()
+        );
+        return respond({
+          ok: true,
+          tool: "cancel",
+          data: {
+            session_id,
+            kind: "transfer",
+            status: "cancelled",
+            note: ok ? "aborted" : "no runtime found (server restart?)",
+          },
+        });
       }
 
       if (rec.status !== "running") {
