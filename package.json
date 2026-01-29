@@ -1,9 +1,27 @@
 {
-  "name": "octssh",
-  "version": "0.0.0",
-  "private": true,
-  "description": "OctSSH MCP server (work in progress)",
+  "name": "@aliyahzombie/octssh",
+  "version": "0.1.0",
+  "description": "OctSSH - Make LLMs safely control your servers for deployment (MCP)",
   "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/aliyahzombie/OctSSH.git"
+  },
+  "homepage": "https://github.com/aliyahzombie/OctSSH#readme",
+  "bugs": {
+    "url": "https://github.com/aliyahzombie/OctSSH/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "mcp",
+    "ssh",
+    "deployment",
+    "automation",
+    "agent",
+    "llm"
+  ],
   "engines": {
     "node": ">=18"
   },
@@ -13,7 +31,8 @@
   "main": "dist/index.js",
   "files": [
     "dist/**",
-    "README.md"
+    "README.md",
+    "README.en.md"
   ],
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.25.3",
@@ -25,7 +44,9 @@
     "clean": "node scripts/clean-dist.cjs",
     "build": "npm run clean --silent && tsup",
     "test": "npm run build --silent && node --test test/index.test.js",
-    "dev": "node dist/index.js"
+    "dev": "node dist/index.js",
+    "prepack": "npm run build --silent",
+    "prepublishOnly": "npm test"
   },
   "devDependencies": {
     "@types/node": "^20.11.30",
