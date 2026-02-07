@@ -12,6 +12,18 @@ export const configSchema = z
     maxConnections: z.number().int().min(1).max(500).default(10),
     allowSshG: z.boolean().default(false),
 
+    // Streamable HTTP MCP server mode (octssh serve)
+    httpServer: z
+      .object({
+        host: z.string().min(1).default("127.0.0.1"),
+        port: z.number().int().min(1).max(65535).default(8787),
+        // If set, this key is used for header auth. Otherwise, `octssh serve`
+        // generates a random per-start key.
+        authKey: z.string().min(1).optional(),
+      })
+      .strict()
+      .default({} as any),
+
     // Safety policy for command execution.
     // This is intentionally conservative: it blocks a small set of known
     // high-risk firewall/lockout commands outright and requires confirmation

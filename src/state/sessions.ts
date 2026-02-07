@@ -50,7 +50,33 @@ const transferSessionSchema = z
   })
   .strict();
 
-export const sessionRecordSchema = z.union([remoteScreenSessionSchema, transferSessionSchema]);
+const localProcessSessionSchema = z
+  .object({
+    kind: z.literal("local"),
+    session_id: z.string().min(1),
+    machine: z.string().min(1),
+    createdAt: z.string().min(1),
+    updatedAt: z.string().min(1),
+    status: z.enum(["running", "done", "failed", "cancelled"]),
+
+    // Local background execution PID (best-effort).
+    cmdPid: z.number().int().positive().optional(),
+
+    // Local paths under <OCTSSH_HOME>/runs/<session_id>/
+    runDir: z.string().min(1),
+    stdoutPath: z.string().min(1),
+    stderrPath: z.string().min(1),
+    metaPath: z.string().min(1),
+
+    exitCode: z.number().int().optional(),
+  })
+  .strict();
+
+export const sessionRecordSchema = z.union([
+  remoteScreenSessionSchema,
+  transferSessionSchema,
+  localProcessSessionSchema,
+]);
 
 export type SessionRecord = z.infer<typeof sessionRecordSchema>;
 
