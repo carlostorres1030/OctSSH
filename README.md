@@ -6,7 +6,7 @@ I was just VibeCoding and suddenly thought: **Why can't I just let my agent depl
 
 So, I built **OctSSH**.
 
-![logo](https://github.com/aliyahzombie/OctSSH/raw/main/assets/logo.png)
+<img src="logo.png" width="200" />
 
 **OctSSH** is an MCP server that gives LLMs **safe, controllable, and stateful** access to shell environments.
 

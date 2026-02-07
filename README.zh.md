@@ -4,7 +4,7 @@
 
 VibeCoding 的时候，我突然想到，能不能让 agent 帮我上服务器部署代码呢，于是，我开发了
 
-![logo](https://github.com/aliyahzombie/OctSSH/raw/main/assets/logo.png)
+<img src="logo.png" width="200" />
 
 **OctSSH** 是一个 MCP 服务，允许 LLM **安全、可控**地访问您的服务器 shell 环境。
 
