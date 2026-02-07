@@ -1,5 +1,7 @@
 # OctSSH
 
+[中文 README](README.zh.md)
+
 I was just VibeCoding and suddenly thought: **Why can't I just let my agent deploy code to the server for me?**
 
 So, I built **OctSSH**.

@@ -1,5 +1,7 @@
 # OctSSH
 
+[English README](README.md)
+
 VibeCoding 的时候，我突然想到，能不能让 agent 帮我上服务器部署代码呢，于是，我开发了
 
 ![logo](https://github.com/aliyahzombie/OctSSH/raw/main/assets/logo.png)
